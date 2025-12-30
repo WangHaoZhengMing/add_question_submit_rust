@@ -1,0 +1,19 @@
+[package]
+name = "add_question_submit"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+chrono = "0.4"
+chromiumoxide = "0.8"
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+toml = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+openai = "1.1.1"
+phf = "0.13.1"
+regex = "1.10"
