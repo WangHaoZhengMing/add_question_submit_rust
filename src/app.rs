@@ -1,9 +1,18 @@
+//! 应用主结构 - 编排层
+//!
+//! 职责：
+//! - 初始化应用
+//! - 管理资源（Browser、JsExecutor）
+//! - 批量处理试卷（Vec<Paper>）
+//! - 统计和日志
+
 use crate::browser;
 use crate::config::Config;
+use crate::infrastructure::JsExecutor;
 use crate::models::QuestionPage;
 use crate::processing;
 use anyhow::Result;
-use chromiumoxide::{Browser, Page};
+use chromiumoxide::Browser;
 use std::fs;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -13,7 +22,7 @@ use tracing::{error, info, warn};
 pub struct App {
     config: Config,
     browser: Browser,
-    page: Page,
+    executor: JsExecutor,
 }
 
 impl App {
@@ -32,10 +41,13 @@ impl App {
         )
         .await?;
 
+        // 创建 JsExecutor（持有 page）
+        let executor = JsExecutor::new(page);
+
         Ok(Self {
             config,
             browser,
-            page,
+            executor,
         })
     }
 
@@ -119,15 +131,20 @@ impl App {
         for (idx, paper_data) in batch_papers.iter().enumerate() {
             let paper_index = batch_start + idx + 1;
             let permit = semaphore.clone().acquire_owned().await?;
-            let page_clone = self.page.clone();
+
+            // 注意：JsExecutor 持有 page，但 page 可以安全地 clone
+            // 因为 chromiumoxide 的 Page 内部使用 Arc
+            let executor_page = self.executor.page().clone();
+            let executor = JsExecutor::new(executor_page);
+
             let paper_data_clone = paper_data.clone();
             let config_clone = self.config.clone();
 
             let handle = tokio::spawn(async move {
                 let _permit = permit;
-                // 使用新的 processing 模块
+                // 使用 JsExecutor 而不是 Page
                 match processing::process_paper(
-                    &page_clone,
+                    &executor,
                     paper_data_clone,
                     paper_index,
                     &config_clone,
