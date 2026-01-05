@@ -31,15 +31,15 @@ pub async fn process_single_paper(
     log_paper_start(paper_index, &page_data.name, page_id, page_data.stemlist.len());
 
     let mut stats = QuestionStats::default();
+
     let mut question_index = 0;
 
-    for (idx, question) in page_data.stemlist.iter().enumerate() {
-        let question_num = idx + 1;
-        log_question_start(paper_index, question_num, page_data.stemlist.len());
+    for (_idx, question) in page_data.stemlist.iter().enumerate() {
+        question_index += 1; // 先递增索引（从1开始）
+        log_question_start(paper_index, question_index, page_data.stemlist.len());
 
         if question.is_title {
             submit_title(page, page_id, question, question_index, paper_index).await?;
-            question_index += 1;
             continue;
         }
 
@@ -48,9 +48,9 @@ pub async fn process_single_paper(
             question,
             page_id,
             paper_index,
-            question_num,
             config,
             &page_data.subject,
+            question_index
         )
         .await
         {
@@ -65,6 +65,7 @@ pub async fn process_single_paper(
                 stats.skipped += 1;
             }
         }
+        // 注意：question_index 已经在循环开始时递增，这里不需要再次递增
     }
 
     // 提交整个试卷
@@ -84,9 +85,9 @@ async fn process_single_question(
     question: &Question,
     page_id: &str,
     paper_index: usize,
-    question_num: usize,
     config: &Config,
     subject: &str,
+    question_index: usize
 ) -> Result<ProcessResult> {
     let stem = &question.stem;
     log_stem(paper_index, stem);
@@ -122,7 +123,7 @@ async fn process_single_question(
     let question_data = build_question_data(
         &full_search_result[selected_index],
         page_id,
-        question_num,
+        question_index
     );
 
     let success = submit_question(page, &question_data, paper_index).await?;
@@ -203,7 +204,7 @@ fn try_quick_match(search_results: &[SearchResult], paper_index: usize) -> Optio
 fn build_question_data(
     search_result: &Value,
     page_id: &str,
-    question_num: usize,
+    question_index: usize
 ) -> Value {
     let mut data = search_result.clone();
     data["addFlag"] = json!(1);
@@ -212,7 +213,7 @@ fn build_question_data(
     data["questionType"] = json!("1");
     data["relationType"] = json!(1);
     data["inputType"] = json!(1);
-    data["questionIndex"] = json!(question_num);
+    data["questionIndex"] = json!(question_index);
     data
 }
 
@@ -229,7 +230,7 @@ async fn submit_title(
     let title_data = json!({
         "paperId": page_id,
         "inputType": 1,
-        "questionIndex": question_index + 1,
+        "questionIndex": question_index,
         "questionType": "2",
         "addFlag": 1,
         "sysCode": 1,
@@ -251,7 +252,7 @@ async fn submit_title(
         .await?
         .into_value()?;
 
-    info!("result:{}",result);
+    debug!("result:{}",result);
 
     Ok(())
 }
@@ -370,11 +371,11 @@ fn log_paper_start(paper_index: usize, name: &str, page_id: &str, question_count
     info!("[试卷 {}] 题目总数: {}", paper_index, question_count);
 }
 
-fn log_question_start(paper_index: usize, question_num: usize, total: usize) {
+fn log_question_start(paper_index: usize, question_index: usize, total: usize) {
     info!("\n[试卷 {}] {}", paper_index, "─".repeat(30));
     info!(
         "[试卷 {}] 处理第 {}/{} 道题目",
-        paper_index, question_num, total
+        paper_index, question_index, total
     );
 }
 
@@ -404,82 +405,4 @@ fn log_paper_complete(paper_index: usize, stats: &QuestionStats, total: usize) {
         paper_index, stats.processed, stats.skipped, total
     );
     info!("\n[试卷 {}] ✅ 试卷处理完成\n", paper_index);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-
-    pub async fn process_single_paper_test(
-        page: &Page,
-        page_data: QuestionPage,
-        paper_index: usize,
-        config: &Config,
-    ) -> Result<bool> {
-        let page_id = page_data
-            .page_id
-            .as_ref()
-            .context("试卷ID不能为空")?;
-
-        log_paper_start(paper_index, &page_data.name, page_id, page_data.stemlist.len());
-
-        let mut stats = QuestionStats::default();
-        let mut question_index = 0;
-
-        for (idx, question) in page_data.stemlist.iter().enumerate() {
-            let question_num = idx + 1;
-            log_question_start(paper_index, question_num, page_data.stemlist.len());
-
-            if question.is_title {
-                submit_title(page, page_id, question, question_index, paper_index).await?;
-                question_index += 1;
-                continue;
-            }
-
-            match process_single_question(
-                page,
-                question,
-                page_id,
-                paper_index,
-                question_num,
-                config,
-                &page_data.subject,
-            )
-            .await
-            {
-                Ok(ProcessResult::Success) => {
-                    stats.processed += 1;
-                }
-                Ok(ProcessResult::Skipped) => {
-                    stats.skipped += 1;
-                }
-                Err(e) => {
-                    error!("[试卷 {}] 处理题目失败: {}", paper_index, e);
-                    stats.skipped += 1;
-                }
-            }
-        }
-
-        // 提交整个试卷
-        submit_paper(page, page_id, paper_index).await?;
-
-        // 注意：测试模式下不删除文件
-        info!("[试卷 {}] 🧪 测试模式：保留 toml 文件", paper_index);
-        if let Some(file_path) = &page_data.file_path {
-            info!(
-                "[试卷 {}] 📄 文件路径: {}",
-                paper_index,
-                Path::new(file_path)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-            );
-        }
-
-        log_paper_complete(paper_index, &stats, page_data.stemlist.len());
-
-        Ok(true)
-    }
-    
 }

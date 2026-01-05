@@ -1,6 +1,6 @@
 use openai::chat::{ChatCompletion, ChatCompletionMessage, ChatCompletionMessageRole};
 use openai::Credentials;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 use crate::model::model::{SearchResult, SearchResultForLlm};
 

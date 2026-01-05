@@ -27,7 +27,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            max_concurrent_papers: 1,
+            max_concurrent_papers: 100,
             browser_debug_port: 2001,
             target_url: "https://tk-lpzx.xdf.cn/#/paperEnterList".to_string(),
             toml_folder: "output_toml".to_string(),
@@ -44,7 +44,7 @@ impl Config {
             max_concurrent_papers: std::env::var("MAX_CONCURRENT_PAPERS")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(1),
+                .unwrap_or(100),
             browser_debug_port: std::env::var("BROWSER_DEBUG_PORT")
                 .ok()
                 .and_then(|v| v.parse().ok())

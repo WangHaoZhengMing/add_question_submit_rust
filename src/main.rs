@@ -2,12 +2,11 @@ mod app;
 mod ask_llm;
 mod browser;
 mod config;
-mod grade;
+mod error;
 mod logger;
+mod model;
 mod paper_processor;
 mod search_bank;
-mod subject;
-mod model;
 
 use anyhow::Result;
 use app::App;
@@ -22,11 +21,40 @@ async fn main() -> Result<()> {
     let config = Config::from_env();
 
     // 初始化并运行应用
-    let app = App::initialize(config).await?;
-    app.run().await?;
+    let _app = App::initialize(config).await?.run().await?;
 
     Ok(())
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -50,21 +78,21 @@ mod tests {
         let config = Config::from_env();
 
         // 连接浏览器
-        let (_browser, page) = connect_to_browser_and_page(
-            config.browser_debug_port,
-            Some(&config.target_url),
-            None,
-        )
-        .await
-        .expect("连接浏览器失败");
+        let (_browser, page) =
+            connect_to_browser_and_page(config.browser_debug_port, Some(&config.target_url), None)
+                .await
+                .expect("连接浏览器失败");
 
         // 加载 toml 文件
         // 注意：请根据实际情况修改文件路径
-        let toml_path = Path::new(r"C:\Users\HallM\iCloudDrive\Desktop\rust_code\add_question_submit\output_toml\2025年5月陕西省榆林市榆阳区九年级下学期历史中考模拟练习题（二）.toml");
-        
-        let question_page: crate::model::model::QuestionPage = load_toml_to_question_page(toml_path)
-            .await
-            .expect("加载 toml 文件失败");
+        let toml_path = Path::new(
+            r"C:\Users\HallM\iCloudDrive\Desktop\rust_code\add_question_submit\output_toml\2025年云南省初中学业水平考试历史模拟试卷（3）.toml",
+        );
+
+        let question_page: crate::model::model::QuestionPage =
+            load_toml_to_question_page(toml_path)
+                .await
+                .expect("加载 toml 文件失败");
 
         // 处理试卷
         let result = process_single_paper(&page, question_page, 1, &config)
