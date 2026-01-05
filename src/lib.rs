@@ -22,13 +22,12 @@
 //! - `QuestionFlow` - 流程编排（search → LLM → submit → warn）
 //!
 //! ### ④ 编排层（Orchestration）
-//! - `processing.rs` - 遍历 Vec<Paper> 和 Vec<Question>
-//! - `app.rs` - 应用入口，批量控制
+//! - `orchestrator/batch_processor` - 批量试卷处理器，管理资源和并发
+//! - `orchestrator/paper_processor` - 单个试卷处理器，遍历题目列表
 //!
 //! ## 模块结构
 
 pub mod api;
-pub mod app;
 pub mod browser;
 pub mod clients;
 pub mod config;
@@ -36,17 +35,17 @@ pub mod error;
 pub mod infrastructure;
 pub mod logger;
 pub mod models;
-pub mod processing;
+pub mod orchestrator;
 pub mod services;
 pub mod utils;
 pub mod workflow;
 
 // 重新导出常用类型
-pub use app::App;
 pub use browser::connect_to_browser_and_page;
 pub use config::Config;
 pub use error::{AppError, Result};
 pub use infrastructure::JsExecutor;
-pub use models::{Question, QuestionPage};
-pub use processing::process_paper;
+pub use models::question::Question;
+pub use models::QuestionPage;
+pub use orchestrator::{process_paper, App};
 pub use workflow::{ProcessResult, QuestionCtx, QuestionFlow};

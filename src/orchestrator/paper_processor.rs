@@ -1,6 +1,18 @@
-//! 核心业务处理模块 - 编排层
+//! 单个试卷处理器 - 编排层
+//!
+//! ## 职责
+//!
+//! 本模块负责处理单个试卷的所有题目，是试卷级别的编排器。
+//!
+//! ## 核心功能
+//!
+//! 1. **遍历题目**：循环处理 `Vec<Question>`
+//! 2. **流程调度**：创建并复用 `QuestionFlow`
+//! 3. **特殊处理**：区分标题和普通题目
+//! 4. **试卷提交**：完成后提交整个试卷
+//! 5. **文件清理**：删除已处理的 TOML 文件
+//! 6. **统计输出**：记录成功/跳过/失败数量
 
-use crate::api;
 use crate::config::Config;
 use crate::infrastructure::JsExecutor;
 use crate::models::question::{Question, QuestionPage};
@@ -47,11 +59,11 @@ pub async fn process_paper(
         .to_string();
 
     let mut stats = QuestionStats::default();
-    let mut question_index = 0;
 
     // ========== 遍历所有题目（Vec<Question>） ==========
-    for question in paper.stemlist.iter() {
-        question_index += 1;
+    // 使用 enumerate() 自动获取索引（从 0 开始，所以需要 +1）
+    for (index, question) in paper.stemlist.iter().enumerate() {
+        let question_index = index + 1; // 题目索引从 1 开始
         log_question_start(paper_index, question_index, paper.stemlist.len());
 
         // 特殊处理：标题
@@ -151,11 +163,7 @@ async fn process_title(
 }
 
 /// 提交试卷
-async fn submit_paper(
-    executor: &JsExecutor,
-    paper_id: &str,
-    paper_index: usize,
-) -> Result<()> {
+async fn submit_paper(executor: &JsExecutor, paper_id: &str, paper_index: usize) -> Result<()> {
     info!("[试卷 {}] 📤 正在提交试卷...", paper_index);
 
     let js_code = format!(

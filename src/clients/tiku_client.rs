@@ -5,7 +5,7 @@ use crate::config::Config;
 use anyhow::{Context, Result};
 use chromiumoxide::Page;
 use serde_json::{json, Value};
-use tracing::{debug, warn};
+use tracing::debug;
 
 /// 题库 API 客户端
 pub struct TikuClient {
@@ -77,7 +77,7 @@ impl TikuClient {
 
         Ok(result)
     }
-    
+
     pub async fn search_question_k12(
         &self,
         page: &Page,

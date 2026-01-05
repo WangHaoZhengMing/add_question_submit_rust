@@ -1,16 +1,30 @@
-//! 应用主结构 - 编排层
+//! 批量试卷处理器 - 编排层
 //!
-//! 职责：
-//! - 初始化应用
-//! - 管理资源（Browser、JsExecutor）
-//! - 批量处理试卷（Vec<Paper>）
-//! - 统计和日志
+//! ## 职责
+//!
+//! 本模块是整个应用的入口，负责批量试卷的处理和资源管理。
+//!
+//! ## 核心功能
+//!
+//! 1. **应用初始化**：启动日志、连接浏览器、创建 JsExecutor
+//! 2. **批量加载**：扫描并加载所有待处理的试卷（`Vec<QuestionPage>`）
+//! 3. **并发控制**：使用 Semaphore 限制并发数量
+//! 4. **分批处理**：将试卷分批次处理，每批完成后再开始下一批
+//! 5. **资源管理**：持有 Browser 和 JsExecutor，确保生命周期正确
+//! 6. **全局统计**：汇总所有试卷的处理结果
+//!
+//! ## 设计特点
+//!
+//! - **顶层编排**：不处理单个试卷的细节
+//! - **资源所有者**：唯一持有 Browser 的模块
+//! - **并发安全**：通过 Semaphore 和 tokio::spawn 实现并发
+//! - **向下委托**：委托 paper_processor 处理单个试卷
 
 use crate::browser;
 use crate::config::Config;
 use crate::infrastructure::JsExecutor;
 use crate::models::QuestionPage;
-use crate::processing;
+use crate::orchestrator::paper_processor;
 use anyhow::Result;
 use chromiumoxide::Browser;
 use std::fs;
@@ -21,7 +35,7 @@ use tracing::{error, info, warn};
 /// 应用主结构
 pub struct App {
     config: Config,
-    browser: Browser,
+    _browser: Browser,
     executor: JsExecutor,
 }
 
@@ -46,7 +60,7 @@ impl App {
 
         Ok(Self {
             config,
-            browser,
+            _browser: browser,
             executor,
         })
     }
@@ -143,7 +157,7 @@ impl App {
             let handle = tokio::spawn(async move {
                 let _permit = permit;
                 // 使用 JsExecutor 而不是 Page
-                match processing::process_paper(
+                match paper_processor::process_paper(
                     &executor,
                     paper_data_clone,
                     paper_index,

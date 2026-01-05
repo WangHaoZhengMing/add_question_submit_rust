@@ -1,3 +1,3 @@
-pub mod logging;
-
-pub use logging::*;
+//! 工具模块
+//!
+//! 提供通用的辅助功能

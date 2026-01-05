@@ -4,7 +4,7 @@
 
 use crate::infrastructure::JsExecutor;
 use crate::models::question::SearchResult;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use regex::Regex;
 use serde_json::Value as JsonValue;
 use std::time::Duration;
@@ -39,7 +39,7 @@ impl QuestionSearch {
     /// 返回 (搜索结果列表, 完整 JSON 数据)
     pub async fn search_k14(
         &self,
-        executor: &JsExecutor,
+        _executor: &JsExecutor,
         stem: &str,
     ) -> Result<(Vec<SearchResult>, Vec<JsonValue>)> {
         debug!("K14 搜索 - 题干长度: {} 字符", stem.len());
@@ -69,9 +69,7 @@ impl QuestionSearch {
 
         // 重试逻辑
         for retry_count in 0..self.max_retries {
-            let result = self
-                .call_xueke_api(executor, stem, subject_code)
-                .await?;
+            let result = self.call_xueke_api(executor, stem, subject_code).await?;
 
             // 检查是否被限流
             if self.is_rate_limited(&result) {
@@ -184,9 +182,7 @@ impl QuestionSearch {
 
             let search_result = SearchResult {
                 question_content,
-                xkw_question_similarity: item
-                    .get("xkwQuestionSimilarity")
-                    .and_then(|v| v.as_f64()),
+                xkw_question_similarity: item.get("xkwQuestionSimilarity").and_then(|v| v.as_f64()),
                 img_urls,
             };
             search_results.push(search_result);

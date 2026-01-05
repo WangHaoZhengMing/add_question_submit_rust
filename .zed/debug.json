@@ -1,0 +1,35 @@
+// Project-local debug tasks
+//
+// For more documentation on how to configure debug tasks,
+// see: https://zed.dev/docs/debugger
+[
+  {
+    "adapter": "CodeLLDB",
+    "label": "cargo test -p add_question_submit --all-targets",
+    "build": {
+      "label": "cargo test -p add_question_submit --all-targets",
+      "command": "cargo",
+      "args": [
+        "test",
+        "--package",
+        "add_question_submit",
+        "--all-targets",
+        "--no-run",
+      ],
+      "env": {
+        "RUSTC_TOOLCHAIN": "C:\\Users\\shiji\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc",
+      },
+      "cwd": "C:\\Users\\shiji\\Desktop\\add_question_submit_rust",
+      "use_new_terminal": false,
+      "allow_concurrent_runs": false,
+      "reveal": "always",
+      "reveal_target": "dock",
+      "hide": "never",
+      "tags": [],
+      "shell": "system",
+      "show_summary": false,
+      "show_command": false,
+    },
+    "sourceLanguages": ["rust"],
+  },
+]
