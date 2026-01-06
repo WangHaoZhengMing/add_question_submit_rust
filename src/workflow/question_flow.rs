@@ -6,16 +6,10 @@
 //! 1. search_k14 → LLM 判断 → 提交
 //! 2. search_xueke → LLM 判断 → 提交
 //! 3. warn.txt（兜底）
-//!
-//! 关键特征：
-//! - 明确顺序
-//! - 明确失败分支
-//! - 明确副作用
-
 
 use anyhow::Result;
 use serde_json::{json, Value as JsonValue};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use crate::config::Config;
 use crate::infrastructure::JsExecutor;
@@ -33,8 +27,7 @@ pub enum ProcessResult {
 }
 
 /// 题目处理流程
-///
-/// 职责：
+
 /// - 编排完整的题目处理流程
 /// - 决定何时搜索、何时判断、何时兜底
 /// - 不持有任何资源（page）
@@ -57,20 +50,6 @@ impl QuestionFlow {
         }
     }
 
-    /// 执行完整的题目处理流程
-    ///
-    /// # 参数
-    /// - `executor`: JS 执行器（基础设施层）
-    /// - `question`: 题目数据
-    /// - `ctx`: 题目上下文
-    ///
-    /// # 返回
-    /// 返回处理结果
-    ///
-    /// # 流程
-    /// 1. 尝试 k14 搜索 → LLM 判断 → 提交
-    /// 2. 如果失败，尝试 xueke 搜索 → LLM 判断 → 提交
-    /// 3. 如果都失败，写入 warn.txt
     pub async fn run(
         &self,
         executor: &JsExecutor,
@@ -87,7 +66,7 @@ impl QuestionFlow {
 
         let (k14_results, k14_full_data) = self
             .question_search
-            .search_k14(executor, stem)
+            .search_k14(stem, executor, &ctx.subject_code)
             .await?;
 
         if !k14_results.is_empty() {
@@ -103,7 +82,8 @@ impl QuestionFlow {
                 .find_best_match(&k14_results, stem, question.imgs.as_deref())
                 .await
             {
-                Ok(selected_index) => {
+                // 情况 1: 成功找到匹配 (Some)
+                Ok(Some(selected_index)) => {
                     info!(
                         "[试卷 {}] ✓ LLM 选择了第 {} 个结果 (相似度: {:?})",
                         ctx.paper_index,
@@ -111,14 +91,27 @@ impl QuestionFlow {
                         k14_results[selected_index].xkw_question_similarity
                     );
 
-                    // 提交
+                    // 提交逻辑
                     return self
                         .submit_question(executor, &k14_full_data[selected_index], ctx)
                         .await;
                 }
+
+                // 情况 2: LLM 明确表示没找到，或者重试 3 次后仍无法解析 (None)
+                Ok(None) => {
+                    info!(
+                        "[试卷 {}] K14 LLM 未找到匹配结果 (or 已尝试 3 次)，尝试学科网题库...",
+                        ctx.paper_index
+                    );
+                    // 这里不需要写代码，自然会跳出 match，执行下面的 "else" 或者后续逻辑
+                }
+
+                // 情况 3: 严重的 API 错误 (3次全挂)
                 Err(e) => {
-                    warn!("[试卷 {}] ⚠️ K14 LLM 判断失败: {}", ctx.paper_index, e);
-                    // 继续尝试 xueke
+                    error!(
+                        "[试卷 {}] ⚠️ K14 LLM 调用彻底失败: {} (已重试 3 次)",
+                        ctx.paper_index, e
+                    );
                 }
             }
         } else {
@@ -155,21 +148,35 @@ impl QuestionFlow {
         }
 
         // LLM 判断
-        let selected_index = self
+        let match_result = self
             .llm_service
             .find_best_match(&xueke_results, stem, question.imgs.as_deref())
             .await?;
 
-        info!(
-            "[试卷 {}] ✓ LLM 选择了第 {} 个结果 (相似度: {:?})",
-            ctx.paper_index,
-            selected_index + 1,
-            xueke_results[selected_index].xkw_question_similarity
-        );
+        match match_result {
+            Some(index) => {
+                // LLM 找到了匹配项
+                info!(
+                    "[试卷 {}] ✓ LLM 选择了第 {} 个结果 (相似度: {:?})",
+                    ctx.paper_index,
+                    index + 1,
+                    xueke_results[index].xkw_question_similarity
+                );
 
-        // 提交
-        self.submit_question(executor, &xueke_full_data[selected_index], ctx)
-            .await
+                // 提交
+                return self
+                    .submit_question(executor, &xueke_full_data[index], ctx)
+                    .await;
+            }
+            None => {
+                warn!(
+                    "[试卷 {}] ⚠️ 学科题库有结果但 LLM 认为都不匹配，写入 warn.txt",
+                    ctx.paper_index
+                );
+                self.write_warn(ctx, question).await?;
+                return Ok(ProcessResult::Skipped);
+            }
+        }
     }
 
     /// 提交题目到题库
@@ -191,11 +198,15 @@ impl QuestionFlow {
             r#"
             (async () => {{
                 try {{
-                    const response = await fetch('/tiku/api/paper/saveQuestion', {{
+                    const response = await fetch('https://tps-tiku-api.staff.xdf.cn/question/new/save', {{
                         method: 'POST',
                         headers: {{
                             'Content-Type': 'application/json',
+                                "Accept": "application/json, text/plain, */*",
+                                // 关键补充：根据之前的分析，这个头是必须的
+                                "tikutoken": "732FD8402F95087CD934374135C46EE5",
                         }},
+                        credentials: 'include',
                         body: JSON.stringify({})
                     }});
                     const result = await response.json();

@@ -18,9 +18,10 @@ use crate::infrastructure::JsExecutor;
 use crate::models::question::{Question, QuestionPage};
 use crate::workflow::{ProcessResult, QuestionCtx, QuestionFlow};
 use anyhow::{Context, Result};
+use serde_json::json;
 use std::fs;
 use std::path::Path;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 /// 题目处理统计
 #[derive(Debug, Default)]
@@ -85,7 +86,7 @@ pub async fn process_paper(
             question_index,
             subject_code.clone(),
         );
-
+        debug!("当前题目上下文: {:?}", ctx);
         // 执行流程（委托给 QuestionFlow）
         match question_flow.run(executor, question, &ctx).await {
             Ok(ProcessResult::Success) => {
@@ -131,34 +132,44 @@ async fn process_title(
 ) -> Result<()> {
     info!("[试卷 {}] 检测到标题，开始传入标题", paper_index);
 
-    let js_code = format!(
-        r#"
-        (async () => {{
-            try {{
-                const response = await fetch('/tiku/api/paper/saveTitle', {{
-                    method: 'POST',
-                    headers: {{
-                        'Content-Type': 'application/json',
-                    }},
-                    body: JSON.stringify({{
-                        paperId: {},
-                        questionIndex: {},
-                        titleContent: {}
-                    }})
-                }});
-                const result = await response.json();
-                return result;
-            }} catch (error) {{
-                return {{ error: error.message }};
-            }}
-        }})()
-        "#,
-        serde_json::to_string(paper_id)?,
-        question_index,
-        serde_json::to_string(&question.stem)?
-    );
+    let body_data = json!({
+        "paperId": paper_id,
+        "inputType": 1,
+        "questionIndex": question_index,
+        "questionType": "2",
+        "addFlag": 1,
+        "sysCode": 1,
+        "relationType": 0,
+        "questionSource": 3,
+        "structureType": "biaoti",
+        "questionInfo": {
+            "stem": format!("<span>{}</span>", &question.stem)
+        }
+    });
 
-    executor.eval(js_code).await?;
+    let js_code = format!(r#"
+            (async () => {{
+                try {{
+                    const response = await fetch('https://tps-tiku-api.staff.xdf.cn/question/new/save', {{
+                        method: 'POST',
+                        headers: {{
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json, text/plain, */*',
+                            'tikutoken': '732FD8402F95087CD934374135C46EE5'
+                        }},
+                        credentials: 'include',
+                        body: JSON.stringify({}) 
+                    }});
+                    const result = await response.json();
+                    return result;
+                }} catch (error) {{
+                    return {{ error: error.message }};
+                }}
+            }})()
+        "#, body_data); // 直接传入 serde_json::Value 对象，format! 会自动调用它的 Display 实现
+    debug!("Json playload:{}", &js_code);
+    let result = executor.eval(js_code).await?;
+    debug!(?result);
     Ok(())
 }
 
@@ -170,10 +181,12 @@ async fn submit_paper(executor: &JsExecutor, paper_id: &str, paper_index: usize)
         r#"
         (async () => {{
             try {{
-                const response = await fetch('/tiku/api/paper/submitPaper', {{
+                const response = await fetch('https://tps-tiku-api.staff.xdf.cn/api/paper/submitPaper', {{
                     method: 'POST',
                     headers: {{
                         'Content-Type': 'application/json',
+                        'Accept': 'application/json, text/plain, */*',
+                        'tikutoken': '732FD8402F95087CD934374135C46EE5'
                     }},
                     body: JSON.stringify({{
                         paperId: {}

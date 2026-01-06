@@ -27,13 +27,11 @@
 //!
 //! ## 模块结构
 
-pub mod api;
 pub mod browser;
-pub mod clients;
 pub mod config;
 pub mod error;
 pub mod infrastructure;
-pub mod logger;
+
 pub mod models;
 pub mod orchestrator;
 pub mod services;

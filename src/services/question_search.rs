@@ -29,24 +29,57 @@ impl QuestionSearch {
         Self { max_retries: 50 }
     }
 
-    /// K14 题库搜索
-    ///
-    /// # 参数
-    /// - `executor`: JS 执行器
-    /// - `stem`: 题干内容
-    ///
     /// # 返回
     /// 返回 (搜索结果列表, 完整 JSON 数据)
     pub async fn search_k14(
         &self,
-        _executor: &JsExecutor,
+        subject_code: &str,
+        executor: &JsExecutor,
         stem: &str,
     ) -> Result<(Vec<SearchResult>, Vec<JsonValue>)> {
-        debug!("K14 搜索 - 题干长度: {} 字符", stem.len());
+        debug!("k14题库搜索 - 题干长度: {} 字符", stem.len());
 
-        // K14 搜索的具体实现
-        // 这里暂时返回空，因为当前系统没有 k14 搜索
-        // 如果需要实现，按照 xueke 的模式添加
+        // 重试逻辑
+        for retry_count in 0..self.max_retries {
+            sleep(Duration::from_millis(300)).await; // 避免请求过快
+            let result = self.call_k14_api(executor, stem, subject_code).await?;
+
+            debug!("K14 搜索结果: {:?}", result);
+
+            // 检查是否被限流
+            if self.is_rate_limited(&result) {
+                warn!(
+                    "API 请求频繁限制 (尝试 {}/{}), 等待 2 秒后重试...",
+                    retry_count + 1,
+                    self.max_retries
+                );
+                sleep(Duration::from_secs(2)).await;
+                continue;
+            }
+
+            // 检查结果
+            if result.is_null() {
+                warn!("API 返回为空");
+                break;
+            }
+
+            // 提取并解析搜索结果
+            if let Some(data_array) = self.extract_search_data(&result) {
+                let (search_results, full_data) = self.parse_search_results(data_array)?;
+                return Ok((search_results, full_data));
+            } else {
+                // 检查其他错误
+                if let Some(code) = result.get("code").and_then(|v| v.as_u64()) {
+                    if code != 200 {
+                        warn!("API 返回 data 为 None: {:?}", result);
+                    }
+                }
+                break;
+            }
+        }
+
+        // 超过最大重试次数或其他错误
+        warn!("搜索失败，已重试 {} 次", self.max_retries);
         Ok((Vec::new(), Vec::new()))
     }
 
@@ -95,7 +128,7 @@ impl QuestionSearch {
             } else {
                 // 检查其他错误
                 if let Some(code) = result.get("code").and_then(|v| v.as_u64()) {
-                    if code != 600 {
+                    if code != 200 {
                         warn!("API 返回 data 为 None: {:?}", result);
                     }
                 }
@@ -119,16 +152,58 @@ impl QuestionSearch {
             r#"
             (async () => {{
                 try {{
-                    const response = await fetch('/tiku/api/paper/searchQuestionXueku', {{
+                    const response = await fetch("https://tps-tiku-api.staff.xdf.cn/api/third/xkw/question/v2/text-search", {{
                         method: 'POST',
                         headers: {{
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json, text/plain, */*',
+                            'tikutoken': '732FD8402F95087CD934374135C46EE5'
                         }},
+                        credentials: "include", // 这一行非常重要，用于发送 Cookie (XDFUUID, token 等)
                         body: JSON.stringify({{
-                            questionContent: {},
-                            subjectCode: {},
-                            pageSize: 50
+                                "stage": "3",
+                                "subject": {},
+                                "text": {},
                         }})
+                    }});
+                    const result = await response.json();
+                    return result;
+                }} catch (error) {{
+                    return {{ error: error.message }};
+                }}
+            }})()
+            "#,
+            serde_json::to_string(subject_code)?,
+            serde_json::to_string(stem)?,
+        );
+
+        debug!("xueke 搜索 JS Playload: {}", &js_code);
+        executor.eval(js_code).await
+    }
+
+    async fn call_k14_api(
+        &self,
+        executor: &JsExecutor,
+        stem: &str,
+        subject_code: &str,
+    ) -> Result<JsonValue> {
+        let js_code = format!(
+            r#"
+            (async () => {{
+                try {{
+                    const response = await fetch("https://tps-tiku-api.staff.xdf.cn/api/questionsimilar/queryByText", {{
+                        method: 'POST',
+                        headers: {{
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json, text/plain, */*',
+                            'tikutoken': '732FD8402F95087CD934374135C46EE5'
+                        }},
+                        credentials: "include", // 这一行非常重要，用于发送 Cookie (XDFUUID, token 等)
+                        body: JSON.stringify({{
+                                "stage": "3",
+                                "subject": {},
+                                "text": {}
+                                }})
                     }});
                     const result = await response.json();
                     return result;
@@ -140,6 +215,8 @@ impl QuestionSearch {
             serde_json::to_string(stem)?,
             serde_json::to_string(subject_code)?
         );
+
+        debug!("K14 搜索 JS Playload: {}", &js_code);
 
         executor.eval(js_code).await
     }
@@ -157,7 +234,6 @@ impl QuestionSearch {
     fn extract_search_data<'a>(&self, result: &'a JsonValue) -> Option<&'a [JsonValue]> {
         result
             .get("data")?
-            .get("records")?
             .as_array()
             .map(|v| v.as_slice())
     }

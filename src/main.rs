@@ -1,10 +1,10 @@
-use add_question_submit::{App, Config};
+use add_question_submit::{App, Config, utils};
 use anyhow::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // 初始化日志
-    add_question_submit::logger::init();
+    utils::logger::init();
 
     // 加载配置
     let config = Config::from_env();

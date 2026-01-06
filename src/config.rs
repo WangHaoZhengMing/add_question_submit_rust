@@ -25,10 +25,10 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            max_concurrent_papers: 100,
+            max_concurrent_papers: 1,
             browser_debug_port: 2001,
             target_url: "https://tk-lpzx.xdf.cn/#/paperEnterList".to_string(),
-            toml_folder: "output_toml".to_string(),
+            toml_folder: r"C:\Users\HallM\iCloudDrive\Desktop\rust_code\add_question_submit\output_toml".to_string(),
             verbose_logging: false,
             output_log_file: "output.txt".to_string(),
             llm_api_key: "26e96c4d312e48feacbd78b7c42bd71e".to_string(),
